@@ -1,6 +1,5 @@
+streamlit==1.19.0
 pandas
-numpy
 matplotlib
 scikit-learn
-streamlit
-pyngrok
+altair<5
