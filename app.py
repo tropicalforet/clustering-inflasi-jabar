@@ -6,18 +6,28 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 
 # ===============================
-# CONFIG
+# PAGE CONFIG
 # ===============================
 st.set_page_config(
-    page_title="Clustering Inflasi Jawa Barat",
+    page_title="Peta Kelompok Inflasi Jawa Barat",
     layout="wide"
 )
 
-st.title("📊 Dashboard Clustering Inflasi Jawa Barat")
-st.write(
-    "Visualisasi hasil clustering inflasi kabupaten/kota "
-    "di Provinsi Jawa Barat menggunakan algoritma K-Means"
+# ===============================
+# HEADER
+# ===============================
+st.title("📊 Peta Kelompok Inflasi Kabupaten/Kota di Jawa Barat")
+st.markdown(
+    """
+    Aplikasi ini menampilkan hasil **pengelompokan (clustering)** wilayah di Jawa Barat  
+    berdasarkan **pola inflasi kelompok pengeluaran**.
+
+    👉 Tujuannya adalah membantu memahami **perbedaan karakteristik inflasi antar wilayah**  
+    secara **visual dan mudah dipahami**.
+    """
 )
+
+st.divider()
 
 # ===============================
 # PATH FILE
@@ -27,15 +37,12 @@ CLUSTERED_PATH = "inflasi_data_clustered.csv"
 PCA_PATH = "pca_cluster_results.csv"
 
 # ===============================
-# LOAD DATA MENTAH
+# LOAD & PROCESS DATA
 # ===============================
 @st.cache_data
 def load_raw_data(path):
     return pd.read_csv(path, sep=';')
 
-# ===============================
-# PREPROCESS + CLUSTERING
-# ===============================
 @st.cache_data
 def generate_clustering(df_raw):
     X = df_raw.select_dtypes(include=['float64', 'int64'])
@@ -44,14 +51,12 @@ def generate_clustering(df_raw):
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    # Jumlah cluster hasil evaluasi
     kmeans = KMeans(n_clusters=6, random_state=42, n_init=10)
     clusters = kmeans.fit_predict(X_scaled)
 
     df_clustered = df_raw.copy()
     df_clustered["Cluster"] = clusters
 
-    # PCA untuk visualisasi
     pca = PCA(n_components=2)
     X_pca = pca.fit_transform(X_scaled)
 
@@ -64,32 +69,50 @@ def generate_clustering(df_raw):
     return df_clustered, pca_df
 
 # ===============================
-# MAIN PROCESS
+# MAIN LOAD
 # ===============================
 try:
     df_raw = load_raw_data(DATA_PATH)
 except FileNotFoundError:
-    st.error(f"File data '{DATA_PATH}' tidak ditemukan. Pastikan file sudah di-upload ke repository GitHub.")
+    st.error("❌ Data inflasi tidak ditemukan. Pastikan file CSV sudah di-upload.")
     st.stop()
 
-# Coba load hasil clustering (jika sudah ada)
 try:
     df = pd.read_csv(CLUSTERED_PATH)
     pca_df = pd.read_csv(PCA_PATH)
-    st.success("Hasil clustering berhasil dimuat.")
 except FileNotFoundError:
-    st.info("Hasil clustering belum tersedia. Membuat clustering baru...")
     df, pca_df = generate_clustering(df_raw)
     df.to_csv(CLUSTERED_PATH, index=False)
     pca_df.to_csv(PCA_PATH, index=False)
-    st.success("Clustering dan PCA berhasil dibuat.")
+
+# ===============================
+# RINGKASAN UTAMA
+# ===============================
+st.subheader("📌 Ringkasan Hasil")
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("Jumlah Wilayah", df.shape[0])
+
+with col2:
+    st.metric("Jumlah Kelompok (Cluster)", df["Cluster"].nunique())
+
+with col3:
+    st.metric("Metode Analisis", "K-Means")
+
+st.info(
+    "Wilayah dikelompokkan ke dalam **6 cluster**, di mana setiap cluster "
+    "memiliki karakteristik inflasi yang relatif mirip."
+)
+
+st.divider()
 
 # ===============================
 # SIDEBAR FILTER
 # ===============================
-st.sidebar.header("Filter")
+st.sidebar.header("🔎 Filter Tampilan")
 cluster_option = st.sidebar.multiselect(
-    "Pilih Cluster",
+    "Pilih Kelompok Wilayah (Cluster)",
     sorted(df["Cluster"].unique()),
     default=sorted(df["Cluster"].unique())
 )
@@ -98,39 +121,60 @@ df_filtered = df[df["Cluster"].isin(cluster_option)]
 pca_filtered = pca_df[pca_df["Cluster"].isin(cluster_option)]
 
 # ===============================
-# TABEL HASIL CLUSTERING
+# GRAFIK JUMLAH WILAYAH
 # ===============================
-st.subheader("📋 Tabel Hasil Clustering")
-st.dataframe(df_filtered, use_container_width=True)
+st.subheader("📊 Jumlah Wilayah di Setiap Kelompok")
+st.markdown(
+    "Grafik berikut menunjukkan **berapa banyak kabupaten/kota** "
+    "yang masuk ke masing-masing kelompok inflasi."
+)
 
-# ===============================
-# GRAFIK JUMLAH DATA PER CLUSTER
-# ===============================
-st.subheader("📊 Jumlah Kabupaten/Kota per Cluster")
 cluster_count = df_filtered["Cluster"].value_counts().sort_index()
 st.bar_chart(cluster_count)
 
+st.divider()
+
 # ===============================
-# VISUALISASI PCA
+# PCA VISUAL
 # ===============================
-st.subheader("🔍 Visualisasi PCA")
+st.subheader("🗺️ Peta Sebaran Kelompok Wilayah")
+st.markdown(
+    """
+    Visualisasi ini membantu melihat **pola kedekatan antar wilayah**.
+    - Titik yang **berdekatan** → karakteristik inflasi mirip  
+    - Warna yang sama → berada dalam **kelompok inflasi yang sama**
+    """
+)
+
 fig, ax = plt.subplots()
-ax.scatter(
+scatter = ax.scatter(
     pca_filtered["PC1"],
     pca_filtered["PC2"],
     c=pca_filtered["Cluster"],
     cmap="tab10"
 )
-ax.set_xlabel("Principal Component 1")
-ax.set_ylabel("Principal Component 2")
+ax.set_xlabel("Dimensi Pola Inflasi (1)")
+ax.set_ylabel("Dimensi Pola Inflasi (2)")
 st.pyplot(fig)
 
+st.divider()
+
 # ===============================
-# CATATAN AKADEMIK
+# TABEL DETAIL
 # ===============================
-st.caption(
-    "Clustering dilakukan secara offline menggunakan Google Colab. "
-    "Aplikasi ini digunakan untuk visualisasi hasil analisis dan "
-    "tidak bersifat real-time."
+st.subheader("📋 Daftar Kabupaten/Kota dan Kelompok Inflasi")
+st.markdown(
+    "Tabel berikut menampilkan **detail hasil pengelompokan** "
+    "untuk setiap wilayah."
 )
 
+st.dataframe(df_filtered, use_container_width=True)
+
+# ===============================
+# FOOTNOTE
+# ===============================
+st.caption(
+    "Catatan: Pengelompokan dilakukan menggunakan algoritma K-Means. "
+    "Visualisasi PCA hanya digunakan untuk membantu pemahaman dan "
+    "tidak memengaruhi hasil clustering."
+)
